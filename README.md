@@ -33,7 +33,7 @@ will automatically use permutation-alignment exclusively for VGG and Resnet18 ne
 
 ### Important options
 
-Some of the important options are highlighted below.
+Some of the important options are highlighted below:
 
 ```
 results_file='/scratch/jolicoea/recombine_nets/final_results.txt' # where to store the results
