@@ -1,0 +1,9 @@
+pip
+setuptools
+tqdm
+numpy
+torch
+torchvision
+scipy
+torch
+torchvision
