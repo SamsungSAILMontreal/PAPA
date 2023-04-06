@@ -15,7 +15,7 @@ pip install -r requirements.txt # install all requirements
 
 ## Experiments
 
-The experiments to reproduce the paper can be found in /scripts/paper_experiments.sh.
+The experiments to reproduce the paper can be found in /scripts/paper_experiments.sh and /scripts/paper_gradual_experiments.sh.
 
 
 ### How to train
