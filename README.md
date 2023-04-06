@@ -1,6 +1,6 @@
 <h1 align="center"> PopulAtion Parameter Averaging (PAPA) </h1>
 
-<a href="https://arxiv.org/abs/2205.xxxx" target="_blank">Paper</a>, <a href="https://ajolicoeur.wordpress.com/?p=466" target="_blank">Blog</a> </h3>
+<a href="https://arxiv.org/abs/2205.xxxx" target="_blank">Paper</a>, <a href="https://ajolicoeur.wordpress.com/papa" target="_blank">Blog</a> </h3>
 
 This is the official implementation of the paper [PopulAtion Parameter Averaging (PAPA)](https://arxiv.org/abs/xxxxx). In this paper, we devise an algorithm to obtain a strong single model by training a population of models and averaging them once-in-a-while or slowly pushing them toward the average. Through PAPA, one can obtain a better model than by training a single model. See the [blog post](https://ajolicoeur.wordpress.com/papa) for a summary of the approach.
 
