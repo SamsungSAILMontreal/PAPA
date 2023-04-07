@@ -92,7 +92,8 @@ def print_args(args, hyperparams, n_hyperparams):
     mystr_write +=  f'n_hyper={n_hyperparams} pop={args.n_pop} comb={args.method_comb} every-{args.every_k_epochs} '
     mystr_write +=  f'epochs={args.EPOCHS}[merge=({args.range_merge[0]}, {args.range_merge[1]})] bs={args.batch_size} '
     mystr_write +=  f'opt={args.optim}[momentum={args.momentum}, clip_grad={args.clip_grad}, lr={args.lr}] lr_scheduler={args.lr_scheduler} miles={args.multisteplr_mile} gamma={args.multisteplr_gamma} '
-
+    if args.ema_alpha != 1.0:
+        mystr_write +=  f'PAPA-gradual(ema_alpha={args.ema_alpha}, every={args.ema_every_k} '
     if not args.permutation:
         mystr_write +=  f'noperm '
     else:
