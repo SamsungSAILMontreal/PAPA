@@ -41,7 +41,7 @@ def load_config():
     
     # Data
     parser.add_argument("--data", type=str, default='cifar10', help='cifar10, cifar100, imagenet')
-    parser.add_argument("--val_perc", type=float, default=0.0, help="If 0, soups use test data, otherwise use an hold-out of images from the training data as validation data (in the paper we did not use that option, but it would be a very sensible to do that in practice if you do not have a seperate validation data; this will lead to much better soups)")
+    parser.add_argument("--val_perc", type=float, default=0.0, help="If 0, soups use train data, otherwise use an hold-out of images from the training data as validation data (in the paper we did not use that option, but it would be a very sensible to do that in practice if you do not have a seperate validation data; this will lead to much better soups)")
     parser.add_argument("--pin_memory", type=str2bool, default=True, help='')
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers per gpu')
 
