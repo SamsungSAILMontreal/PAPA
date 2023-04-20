@@ -9,7 +9,6 @@ import math
 
 from models.networks import network
 from utils.loss_fn import TransformTarget, SoftTargetCrossEntropy #, smooth_crossentropy
-from utils.sam import SAM
 from utils.optim import Optimizers
 from utils.schedule import get_schedule
 from utils.utils import evaluate, ensemble_evaluate, get_features, enable_running_stats, disable_running_stats
