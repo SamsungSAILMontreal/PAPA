@@ -1,6 +1,5 @@
 import torch
 import torch.nn.functional as F
-from models.permutations import module_permuted
 
 # From https://github.com/rwightman/pytorch-image-models
 
