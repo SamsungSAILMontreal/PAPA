@@ -22,7 +22,7 @@ def mix_weights_soup(device, net, soup, new_model, w1, w2):
 ## List of networks
 class net_list(nn.Module):
     def __init__(self, args, hyperparams, n_pop=1, 
-        train_dset=None, test_dset=None, val_dset=None, 
+        train_dset=None, train_dset_noaug=None, test_dset=None, val_dset=None, 
         num_classes=10, 
         my_net_list=[], data_loaders=[], start=None):
         super(net_list, self).__init__()
@@ -34,6 +34,7 @@ class net_list(nn.Module):
         self.batch_size = args.batch_size
         self.num_classes = num_classes
         self.train_dset = train_dset
+        self.train_dset_noaug = train_dset_noaug if train_dset_noaug is not None else train_dset[0]
         self.test_dset = test_dset
         self.val_dset = val_dset
         self.loss = SoftTargetCrossEntropy()
@@ -47,7 +48,7 @@ class net_list(nn.Module):
         self.data_loaders = data_loaders
         if len(self.data_loaders)==0:
             for i in range(self.n_pop):
-                self.data_loaders += [torch.utils.data.DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=self.args.num_workers, pin_memory=self.args.pin_memory)]
+                self.data_loaders += [torch.utils.data.DataLoader(train_dset[0 if len(train_dset)==1 else i], batch_size=args.batch_size, shuffle=True, num_workers=self.args.num_workers, pin_memory=self.args.pin_memory)]
 
         self.data_iter = []
         for i in range(self.n_pop):
@@ -76,22 +77,55 @@ class net_list(nn.Module):
         return params
 
     def get_optimizers_schedulers(self):
-        params = self.all_parameters()
 
-        if 'sgd' in self.args.optim:
-            optimizer = torch.optim.SGD(params, lr=self.args.lr, momentum=self.args.momentum, weight_decay=self.args.wd)
-        elif 'adamw' in self.args.optim:
-            optimizer = torch.optim.AdamW(params, lr=self.args.lr, weight_decay=self.args.wd)
-        elif 'adam' in self.args.optim:
-            optimizer = torch.optim.Adam(params, lr=self.args.lr, weight_decay=self.args.wd)
+        if self.args.seperate_optim:
+            optimizer = []
+            lr_scheduler = []
+            swa_scheduler = []
+            for i in range(self.n_pop):
+                params = self.net_list[i].parameters()
+                if 'sgd' in self.args.optim:
+                    optimizer += [torch.optim.SGD(params, lr=self.args.lr, momentum=self.args.momentum, weight_decay=self.args.wd)]
+                elif 'adamw' in self.args.optim:
+                    optimizer += [torch.optim.AdamW(params, lr=self.args.lr, weight_decay=self.args.wd)]
+                elif 'adam' in self.args.optim:
+                    optimizer += [torch.optim.Adam(params, lr=self.args.lr, weight_decay=self.args.wd)]
+                else:
+                    raise NotImplementedError("optim not implemented")
+
+                lr_scheduler += [get_schedule(opt=optimizer[i], sched=self.args.lr_scheduler, EPOCHS=self.EPOCHS, 
+                    epoch_len=len(self.data_loaders[0]),
+                    mile=self.args.multisteplr_mile, gamma=self.args.multisteplr_gamma, lr_min=self.args.lr_min)]
         else:
-            raise NotImplementedError("optim not implemented")
+            params = self.all_parameters()
 
-        lr_scheduler = get_schedule(opt=optimizer, sched=self.args.lr_scheduler, EPOCHS=self.EPOCHS, 
-            epoch_len=len(self.data_loaders[0]),
-            mile=self.args.multisteplr_mile, gamma=self.args.multisteplr_gamma)
+            if 'sgd' in self.args.optim:
+                optimizer = [torch.optim.SGD(params, lr=self.args.lr, momentum=self.args.momentum, weight_decay=self.args.wd)]
+            elif 'adamw' in self.args.optim:
+                optimizer = [torch.optim.AdamW(params, lr=self.args.lr, weight_decay=self.args.wd)]
+            elif 'adam' in self.args.optim:
+                optimizer = [torch.optim.Adam(params, lr=self.args.lr, weight_decay=self.args.wd)]
+            else:
+                raise NotImplementedError("optim not implemented")
+
+            lr_scheduler = [get_schedule(opt=optimizer[0], sched=self.args.lr_scheduler, EPOCHS=self.EPOCHS, 
+                epoch_len=len(self.data_loaders[0]),
+                mile=self.args.multisteplr_mile, gamma=self.args.multisteplr_gamma, lr_min=self.args.lr_min)]
 
         return optimizer, lr_scheduler
+
+    def freeze(self): # freeze every layer except the last layer, for linear-probing before fine-tuning
+        for i in range(self.n_pop):
+            for param in self.net_list[i].parameters():
+                param.requires_grad = False
+
+            for param in self.net_list[i].get_classifier().parameters(): # final layer for timm models, we assume we are using timm
+                param.requires_grad = True
+    
+    def unfreeze(self):
+        for i in range(self.n_pop):
+            for param in self.net_list[i].parameters():
+                param.requires_grad = True
 
     def train(self):
         for i in range(self.n_pop):
@@ -165,7 +199,7 @@ class net_list(nn.Module):
                 test_acc_list = [evaluate(self.device, self.test_dset, single_net, self.batch_size, 
                     maxiter=test_maxiter, pin_memory=self.args.pin_memory, num_workers=self.args.num_workers, num_classes=self.num_classes)]
             if train:
-                train_or_val_acc_list = [evaluate(self.device, self.val_dset if self.val_dset is not None else self.train_dset, single_net, self.batch_size, 
+                train_or_val_acc_list = [evaluate(self.device, self.val_dset if self.val_dset is not None else self.train_dset_noaug, single_net, self.batch_size, 
                     maxiter=maxiter, pin_memory=self.args.pin_memory, num_workers=self.args.num_workers, loss=loss, num_classes=self.num_classes)]
             if soup_type != '':
                 mystr += f"{soup_type}({soup_n}) "
@@ -185,7 +219,7 @@ class net_list(nn.Module):
                 else:
                     test_acc = None
                 if train:
-                    train_or_val_acc = evaluate(self.device, self.val_dset if self.val_dset is not None else self.train_dset, net, self.batch_size, 
+                    train_or_val_acc = evaluate(self.device, self.val_dset if self.val_dset is not None else self.train_dset_noaug, net, self.batch_size, 
                         maxiter=maxiter, pin_memory=self.args.pin_memory, num_workers=self.args.num_workers, loss=loss, num_classes=self.num_classes)
                     train_or_val_acc_list += [train_or_val_acc]
                 mystr += f"Epoch-{epoch+1} model-{j} test_acc = {test_acc} time = {time.process_time() - self.start}" + '\n'
@@ -211,7 +245,7 @@ class net_list(nn.Module):
             new_soup = network(self.args)
             if perm_fn is not None:
                 perm_net, _ = perm_fn(model0=soup, model1=net_list[i], alpha=(n / (n + 1)), alpha2=(1 / (n + 1)),
-                    mixup=float(self.hyperparams[i]['mixup']), smoothing=float(self.hyperparams[i]['smooth']))
+                    mixup=float(self.hyperparams[i]['mixup']), smoothing=float(self.hyperparams[i]['smooth']), cutmix=float(self.hyperparams[i]['cutmix']))
             else:
                 perm_net = net_list[i]
             mix_weights_soup(self.args.device, new_soup, soup.state_dict(), perm_net.state_dict(), w1=(n / (n + 1)), w2=(1 / (n + 1)))
@@ -220,8 +254,8 @@ class net_list(nn.Module):
             alpha[i] = 1
         alpha /= n
         if self.args.repair_soup and n > 1:
-            soup = correct_neuron_stats_multiple(self.train_dset, net_list, [soup], alpha.repeat(1, 1), batch_size=self.batch_size, 
-                n_iter=self.args.n_iter, args=self.args)[0]
+            soup = correct_neuron_stats_multiple(self.train_dset, [self.train_dset_noaug], net_list, [soup], alpha.repeat(1, 1), batch_size=self.batch_size, 
+                n_iter=self.args.n_iter, args=self.args, hyperparams=self.hyperparams)[0]
 
         return soup, n, alpha.repeat(len(self.net_list), 1)
 
@@ -239,11 +273,11 @@ class net_list(nn.Module):
             new_soup = network(self.args)
             if perm_fn is not None:
                 perm_net, _ = perm_fn(model0=soup, model1=net_list[i], alpha=(n / (n + 1)), alpha2=(1 / (n + 1)),
-                    mixup=float(self.hyperparams[i]['mixup']), smoothing=float(self.hyperparams[i]['smooth']))
+                    mixup=float(self.hyperparams[i]['mixup']), smoothing=float(self.hyperparams[i]['smooth']), cutmix=float(self.hyperparams[i]['cutmix']))
             else:
                 perm_net = net_list[i]
             mix_weights_soup(self.args.device, new_soup, soup.state_dict(), perm_net.state_dict(), w1=(n / (n + 1)), w2=(1 / (n + 1)))
-            train_or_val_acc_new = evaluate(self.device, self.val_dset if self.val_dset is not None else self.train_dset, 
+            train_or_val_acc_new = evaluate(self.device, self.val_dset if self.val_dset is not None else self.train_dset_noaug, 
                 new_soup, self.batch_size, maxiter=maxiter, pin_memory=self.args.pin_memory, 
                 num_workers=self.args.num_workers, loss=False, num_classes=self.num_classes)
             if train_or_val_acc_new > train_or_val_acc:
@@ -253,8 +287,8 @@ class net_list(nn.Module):
                 alpha[i] = 1
         alpha /= n
         if self.args.repair_soup and n > 1:
-            soup = correct_neuron_stats_multiple(self.train_dset, net_list, [soup], alpha.repeat(1, 1), batch_size=self.batch_size, 
-                n_iter=self.args.n_iter, args=self.args)[0]
+            soup = correct_neuron_stats_multiple(self.train_dset, [self.train_dset_noaug], net_list, [soup], alpha.repeat(1, 1), batch_size=self.batch_size, 
+                n_iter=self.args.n_iter, args=self.args, hyperparams=self.hyperparams)[0]
         return soup, n, alpha.repeat(len(self.net_list), 1)
 
     def forward(self):
@@ -267,7 +301,7 @@ class net_list(nn.Module):
                 self.data_iter[i] = iter(self.data_loaders[i])
                 x, y = next(self.data_iter[i])
             x, y = x.to(self.args.device), y.to(self.args.device)
-            x, y_ = self.transform_label(x, y, mixup=float(self.hyperparams[i]['mixup']), smoothing=float(self.hyperparams[i]['smooth']))
+            x, y_ = self.transform_label(x, y, mixup=float(self.hyperparams[i]['mixup']), smoothing=float(self.hyperparams[i]['smooth']), cutmix=float(self.hyperparams[i]['cutmix']))
             x = x.to(memory_format=torch.channels_last)
             out_ = self.net_list[i](x).unsqueeze(dim=0)
             out += [out_]

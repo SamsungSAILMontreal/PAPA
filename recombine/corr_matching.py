@@ -106,7 +106,7 @@ def subnet(model, n_layers):
     return model.module.features[:n_layers]
 
 def permute_m1_to_fit_m0(device, train_dset, model0, model1, batch_size=500, n_iter=99999, shuffle=True, alpha=None, alpha2=None, 
-    mixup=0.0, smoothing=0.0):
+    mixup=0.0, smoothing=0.0, cutmix=0.0):
     feats1 = model1.module.features
     n = len(feats1)
     loss_perm = 0
@@ -139,7 +139,7 @@ def permute_m1_to_fit_m0(device, train_dset, model0, model1, batch_size=500, n_i
 
 ## Needs to be simplified....
 def permute_m1_to_fit_m0_resnet18(device, train_dset, model0, model1, batch_size=500, n_iter=99999, shuffle=True, alpha=None, alpha2=None, 
-    mixup=0.0, smoothing=0.0):
+    mixup=0.0, smoothing=0.0, cutmix=0.0):
     
     loss_perm = 0
     k = 0

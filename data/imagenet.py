@@ -2,8 +2,9 @@ import torchvision
 import torchvision.transforms as T
 import numpy as np
 import PIL
+from utils.random_erasing import RandomErasing
 
-def get_imagenet():
+def get_imagenet(imagenet_size=False, re=0.0):
     CIFAR_MEAN = [0.485, 0.456, 0.406]
     CIFAR_STD = [0.229, 0.224, 0.225]
     normalize = T.Normalize(np.array(CIFAR_MEAN), np.array(CIFAR_STD))
@@ -13,6 +14,8 @@ def get_imagenet():
     train_transform += [T.RandomHorizontalFlip()]
     train_transform += [T.ToTensor()]
     train_transform += [normalize]
+    if re > 0.0:
+        train_transform.append(RandomErasing(re, mode='const', max_count=1, num_splits=0, device='cpu'))
     train_transform = T.Compose(train_transform)
 
     test_transform = []

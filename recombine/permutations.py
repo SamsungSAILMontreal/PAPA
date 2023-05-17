@@ -30,7 +30,7 @@ def mix_weights_direct(device, alpha, net, nets):
 
 # Permute -> Interpolate models -> REPAIR (optional) -> return networks
 def permute_m1_to_fit_m0_with_repair(args, train_dset, test_dset, alpha, m0='vgg11_v1', m1='vgg11_v2', 
-    mix=True, hyperparam=None):
+    mix=True, hyperparam=None, train_dset_noaug=None):
 
     permutation = args.permutation
     repair = args.repair
@@ -46,9 +46,9 @@ def permute_m1_to_fit_m0_with_repair(args, train_dset, test_dset, alpha, m0='vgg
     load_model(model1, m1)
     if permutation:
         if 'VGG' in model_name: 
-            model1, loss_perm = permute_m1_to_fit_m0(args.device, train_dset, model0, model1, batch_size=batch_size, n_iter=n_iter_matching, shuffle=shuffle)
+            model1, loss_perm = permute_m1_to_fit_m0(args.device, train_dset_noaug if train_dset_noaug is not None else train_dset[0], model0, model1, batch_size=batch_size, n_iter=n_iter_matching, shuffle=shuffle)
         else:
-            model1, loss_perm = permute_m1_to_fit_m0_resnet18(args.device, train_dset, model0, model1, batch_size=batch_size, n_iter=n_iter_matching, shuffle=shuffle)
+            model1, loss_perm = permute_m1_to_fit_m0_resnet18(args.device, train_dset_noaug if train_dset_noaug is not None else train_dset[0], model0, model1, batch_size=batch_size, n_iter=n_iter_matching, shuffle=shuffle)
     save_model(model1, m1) # overwrite existing model
 
     # Permute weights
@@ -66,17 +66,17 @@ def permute_m1_to_fit_m0_with_repair(args, train_dset, test_dset, alpha, m0='vgg
     mix_weights(args.device, model_interp2, 1-alpha, m0, m1)
 
     if repair: 
-        model_interp = correct_neuron_stats(train_dset, model0, model1, model_interp, alpha, batch_size=batch_size, 
+        model_interp = correct_neuron_stats(train_dset_noaug if train_dset_noaug is not None else train_dset[0], model0, model1, model_interp, alpha, batch_size=batch_size, 
             n_iter=n_iter, args=args, hyperparam=hyperparam)
         if alpha == 0.5:
             model_interp2 = copy.deepcopy(model_interp)
         else:
-            model_interp2 = correct_neuron_stats(train_dset, model0, model1, model_interp2, 1-alpha, batch_size=batch_size, 
+            model_interp2 = correct_neuron_stats(train_dset_noaug if train_dset_noaug is not None else train_dset[0], model0, model1, model_interp2, 1-alpha, batch_size=batch_size, 
                 n_iter=n_iter, args=args, hyperparam=hyperparam)
     return model_interp.to(args.device), model_interp2.to(args.device) # replace alpha=0, alpha=1 models with alpha=.25 and alpha=.75 models
 
 def permute_all_models_to_fit_m0_with_repair(args, train_dset, test_dset, models, model_name='VGG11',  
-    mix=True, train_or_val_acc_list=None, hyperparams=None):
+    mix=True, train_or_val_acc_list=None, hyperparams=None, hyperparams_after=None, train_dset_noaug=None):
     
     permutation = args.permutation
     repair = args.repair
@@ -90,9 +90,9 @@ def permute_all_models_to_fit_m0_with_repair(args, train_dset, test_dset, models
     perm_fn = None
     if permutation:
         if 'VGG' in model_name: 
-            perm_fn = partial(permute_m1_to_fit_m0, device=args.device, train_dset=train_dset, batch_size=batch_size, n_iter=n_iter_matching, shuffle=shuffle)
+            perm_fn = partial(permute_m1_to_fit_m0, device=args.device, train_dset=train_dset_noaug if train_dset_noaug is not None else train_dset[0], batch_size=batch_size, n_iter=n_iter_matching, shuffle=shuffle)
         else:
-            perm_fn = partial(permute_m1_to_fit_m0_resnet18, device=args.device, train_dset=train_dset, batch_size=batch_size, n_iter=n_iter_matching, shuffle=shuffle)
+            perm_fn = partial(permute_m1_to_fit_m0_resnet18, device=args.device, train_dset=train_dset_noaug if train_dset_noaug is not None else train_dset[0], batch_size=batch_size, n_iter=n_iter_matching, shuffle=shuffle)
 
     n = models.len()
     if n == 1:
@@ -130,7 +130,7 @@ def permute_all_models_to_fit_m0_with_repair(args, train_dset, test_dset, models
         else:
             mix_weights_direct(args.device, alpha[k], nets_new[k], nets)
     if repair: 
-        nets_new = correct_neuron_stats_multiple(train_dset, nets, nets_new, alpha, batch_size=batch_size, 
-            n_iter=n_iter, args=args, hyperparams=hyperparams)
+        nets_new = correct_neuron_stats_multiple(train_dset, train_dset, nets, nets_new, alpha, batch_size=batch_size, 
+            n_iter=n_iter, args=args, hyperparams=hyperparams, hyperparams_after=hyperparams_after)
 
     return nets_new, perm_fn

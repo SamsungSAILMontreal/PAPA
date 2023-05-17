@@ -7,3 +7,4 @@ torchvision
 scipy
 torch
 torchvision
+timm

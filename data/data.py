@@ -3,37 +3,40 @@ from data.cifar10 import get_cifar10
 from data.cifar100 import get_cifar100
 from data.imagenet import get_imagenet
 
-def get_data(args):
+def get_data(args, hyperparams):
     # Dataset
+
     if args.data == 'cifar10':
-        train_dset, test_dset = get_cifar10(imagenet_size=False)
-        args.num_classes = 10
-        num_classes = 10
-        if args.val_perc > 0:
-            val_n = int(args.val_perc*len(train_dset))
-            train_dset, val_dset = torch.utils.data.random_split(train_dset, [len(train_dset) - val_n, val_n])
-        else:
-            val_dset = None
+        data_fun = get_cifar10
+        args.num_classes = num_classes = 10
     elif args.data == 'cifar100':
-        train_dset, test_dset = get_cifar100(imagenet_size=False)
-        args.num_classes = 100
-        num_classes = 100
-        if args.val_perc > 0:
-            val_n = int(args.val_perc*len(train_dset))
-            train_dset, val_dset = torch.utils.data.random_split(train_dset, [len(train_dset) - val_n, val_n])
-        else:
-            val_dset = None
+        data_fun = get_cifar100
+        args.num_classes = num_classes = 100
     elif args.data == 'imagenet':
-        train_dset, test_dset = get_imagenet()
-        args.num_classes = 1000
-        num_classes = 1000
-        test_dset = torch.utils.data.Subset(test_dset, torch.randperm(len(test_dset))) # must randomize test dataset to prevent mini-batch issues
-        if args.val_perc > 0:
-            val_n = int(args.val_perc*len(train_dset))
-            train_dset, val_dset = torch.utils.data.random_split(train_dset, [len(train_dset) - val_n, val_n])
-        else:
-            val_dset = None
+        data_fun = get_imagenet
+        args.num_classes = num_classes = 1000
     else:
         raise NotImplementedError('data chosen does not exists')
 
-    return args, train_dset, test_dset, val_dset
+    # Base dataset, no augmentations
+    train_dset_noaug, test_dset = data_fun(imagenet_size=args.timm_models)
+    train_dset = []
+    for i in range(args.n_pop):
+        train_dset += [data_fun(imagenet_size=args.timm_models, 
+            re=float(hyperparams[i]['re'])
+            )[0]]
+
+    # We extract an held-out portion of the data as validation dataset
+    if args.val_perc > 0:
+        val_n = int(args.val_perc*len(train_dset[0]))
+        for i in range(args.n_pop):
+            # we ignore the val here, its just removed
+            generator = torch.Generator().manual_seed(666)
+            train_dset[i] = torch.utils.data.random_split(train_dset[i], [len(train_dset[i]) - val_n, val_n], generator=generator)[0]
+        # we extract the train and validation from the non-augmented data
+        generator = torch.Generator().manual_seed(666)
+        train_dset_noaug, val_dset = torch.utils.data.random_split(train_dset_noaug, [len(train_dset_noaug) - val_n, val_n], generator=generator)
+    else:
+        val_dset = None
+
+    return args, train_dset_noaug, train_dset, test_dset, val_dset

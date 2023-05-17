@@ -60,14 +60,6 @@ def preprocessing(rank, args, hyperparams):
     args.range_merge[0] *= args.EPOCHS
     args.range_merge[1] *= args.EPOCHS
 
-    if args.method_comb == 'none':
-        args.repair_soup = True
-        print("---- REPAIR has been activated for soups ----")
-        if args.model_name.lower() in ['vgg11', 'vgg13', 'vgg16', 'vgg19', 'resnet18', 'resnet20']:
-            args.permutation = True
-            print("---- For the VGG, Resnet18, and Resnet20 architectures, we do permutation alignment for better soups since the code is available ----")
-        else:
-            print("---- We are NOT doing permutation alignment for better soups because the code only exists for VGG, Resnet18, and Resnet20 architectures ----")
     if args.selection:
         max_select = args.n_pop if not args.selection else int(args.n_children_per_parent*args.n_pop)
         n_groups = torch.combinations(torch.arange(0, args.n_pop).to(args.device))

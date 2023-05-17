@@ -41,13 +41,60 @@ def load_config():
     
     # Data
     parser.add_argument("--data", type=str, default='cifar10', help='cifar10, cifar100, imagenet')
-    parser.add_argument("--val_perc", type=float, default=0.0, help="If 0, soups use train data, otherwise use an hold-out of images from the training data as validation data (in the paper we did not use that option, but it would be a very sensible to do that in practice if you do not have a seperate validation data; this will lead to much better soups)")
+    parser.add_argument("--val_perc", type=float, default=0.02, help="If 0, soups use train data, otherwise use an hold-out of images from the training data as validation data (in the paper we did not use that option, but it would be a very sensible to do that in practice if you do not have a seperate validation data; this will lead to much better soups)")
     parser.add_argument("--pin_memory", type=str2bool, default=True, help='')
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers per gpu')
 
     # Mixed-precision (faster, less memory = win win)
     parser.add_argument("--mixed_precision", type=str2bool, default=True, help='If True, use mixed precision')
     parser.add_argument("--grad_scaler", type=str2bool, default=True, help='If True, scale step for mixed precision to prevent problems in gradients')
+    
+    # PAPA
+    parser.add_argument("--ema_alpha", type=float, default=1.0, help="ema_alpha*w + (1-ema_alpha)*w_avg, using ema_alpha < 1.0 will disable any option used in method_comb and PAPA")
+    parser.add_argument("--ema_every_k", type=int, default=10, help="how often (in iteration, not epoch) to apply the EMA, default to every single iteration")
+    parser.add_argument("--lr_scaling", type=str, default='linear', help="none, linear, sqrt; when lr decreases, decrease 1-ema_alpha linearly (linear)")
+
+    # PAPA variants (method_comb=pair_half is PAPA-2, method_comb=avg is PAPA-all)
+    parser.add_argument("--every_k_epochs", type=int, default=5, help="apply Genetic algorithm every k epochs")
+    parser.add_argument("--method_comb", type=str, default='avg', help=" Weights for combining networks \
+        No merging: none [Baseline], \
+        Combine pairs of 2 nets: pair_75 (.75, .25), pair_half (.5, .5) [PAPA-2], \
+        Combine all nets: many_half (.50, .50*1/k, ... , .50*1/k), many_75 (.75, .25*1/k, ... , .25*1/k), \
+        Average of all nets duplicated over all children: avg (1/k, ... , 1/k) [PAPA-all],  \
+        Soup (duplicated over all children): greedy_soup (avg of best nets) \
+        Combine all nets with random weights: random (random1, random2, ... , randomk)")
+    parser.add_argument("--same_init", type=str2bool, default=False, help="If True, all nets start from the same initialization")
+    parser.add_argument("--mix_from_start", type=str2bool, default=True, help="If True, mix the networks at the end of epoch 0")
+    parser.add_argument('--range_merge', nargs=2, type=float, default=[0,1], help='Range of timing of which to use the network merging (ex: [0.2,.5] with 100 epochs will only merge networks between epoch 200 and epoch 500; inclusive)')
+
+    # Varying Regularizations
+    parser.add_argument('--mixup', nargs='+', default=['0.0'], help='List of mixup alpha to choose from')
+    parser.add_argument('--smooth', nargs='+', default=['0.0'], help='List of label smoothings to choose from')
+    parser.add_argument('--cutmix', nargs='+', default=['0.0'], help='List of cutmix alpha to choose from (1.0 is good choise)')
+    parser.add_argument('--re', nargs='+', default=['0.0'], help='List of random erase prob to choose from (.35 is good choice)')
+
+    # Optimization
+    parser.add_argument('--optim', type=str, default='sgd', help='Optimizers to choose from (adam, sgd, adamw)')
+    parser.add_argument('--wd', type=float, default=1e-4, help='weight decay')
+    parser.add_argument("--clip_grad", type=float, default=0, help='clip grad value')
+    parser.add_argument("--batch_size", type=int, default=64, help="batch size")
+    parser.add_argument("--momentum", type=float, default=0.9, help="sgd momentum parameter")
+    parser.add_argument('--lr', type=float, default=0.1, help='learning rate')
+    parser.add_argument('--lr_min', type=float, default=0.0001, help='learning rate minimum, for cosine')
+    parser.add_argument('--lr_scheduler', type=str, default='cosine', help='none, multisteplr')
+    parser.add_argument('--multisteplr_mile', type=float, nargs='+', default=[.5, .75], help='milestones for lr reductions')
+    parser.add_argument('--multisteplr_gamma', type=float, default=0.1, help='gamma for lr reductions')
+    parser.add_argument("--seperate_optim", type=str2bool, default=True, help='If true, use different optimizers per model, this makes sense for Adam; this changes nothing for SGD')
+
+    # Fine-tuning
+    parser.add_argument("--timm_models", type=str2bool, default=False, help='If true, use timm models, otherwise use my models')
+    parser.add_argument("--finetune", type=str2bool, default=False, help='If true, timm models are loaded from their pretrained weights')
+    parser.add_argument("--linear_prob_time", type=float, default=0.04, help="0 to 1.0: Amount of time spent doing linear probing (learning only the last layer) before fine-tuning the whole network (0.04 is good)")
+
+    # REPAIR
+    parser.add_argument("--repair", type=str2bool, default=True, help="use REPAIR after interpolating")
+    parser.add_argument("--repair_soup", type=str2bool, default=False, help="use REPAIR after soups")
+    parser.add_argument("--n_iter", type=int, default=5, help="the number of itererations in repair")
 
     # ESGD
     parser.add_argument("--tournament_pairwise", type=str2bool, default=False, help="If True, tournament selection")
@@ -61,44 +108,6 @@ def load_config():
     # Permutation alignment
     parser.add_argument("--permutation", type=str2bool, default=False, help="Permute weights using feature matching (or weight matching) before interpolating")
     parser.add_argument("--n_iter_matching", type=int, default=9999, help="maximum number of dataloader iterations for correlation/weight matching")
-    
-    # PAPA (method_comb=pair_half is PAPA-2, method_comb=avg is PAPA-all)
-    parser.add_argument("--every_k_epochs", type=int, default=5, help="apply Genetic algorithm every k epochs")
-    parser.add_argument("--method_comb", type=str, default='avg', help=" Weights for combining networks \
-        No merging: none [Baseline], \
-        Combine pairs of 2 nets: pair_75 (.75, .25), pair_half (.5, .5) [PAPA-2], \
-        Combine all nets: many_half (.50, .50*1/k, ... , .50*1/k), many_75 (.75, .25*1/k, ... , .25*1/k), \
-        Average of all nets duplicated over all children: avg (1/k, ... , 1/k) [PAPA-all],  \
-        Soup (duplicated over all children): greedy_soup (avg of best nets) \
-        Combine all nets with random weights: random (random1, random2, ... , randomk)")
-    parser.add_argument("--same_init", type=str2bool, default=False, help="If True, all nets start from the same initialization")
-    parser.add_argument("--mix_from_start", type=str2bool, default=True, help="If True, mix the networks at the end of epoch 0")
-    parser.add_argument('--range_merge', nargs=2, type=float, default=[0,1], help='Range of timing of which to use the network merging (ex: [0.2,.5] with 100 epochs will only merge networks between epoch 200 and epoch 500; inclusive)')
-
-    # PAPA-gradual
-    parser.add_argument("--ema_alpha", type=float, default=1.0, help="ema_alpha*w + (1-ema_alpha)*w_avg, using ema_alpha < 1.0 will disable any option used in method_comb and PAPA")
-    parser.add_argument("--ema_every_k", type=int, default=1, help="how often (in iteration, not epoch) to apply the EMA, default to every single iteration")
-
-    # Optimization
-    parser.add_argument('--optim', type=str, default='sgd', help='Optimizers to choose from (adam, sgd, adamw)')
-    parser.add_argument('--wd', type=float, default=1e-4, help='weight decay')
-    parser.add_argument("--clip_grad", type=float, default=0, help='clip grad value')
-    parser.add_argument("--batch_size", type=int, default=64, help="batch size")
-    parser.add_argument("--momentum", type=float, default=0.9, help="sgd momentum parameter")
-    parser.add_argument('--lr', type=float, default=0.1, help='learning rate')
-    parser.add_argument('--lr_scheduler', type=str, default='multisteplr', help='none, multisteplr')
-    parser.add_argument('--multisteplr_mile', type=float, nargs='+', default=[.5, .75], help='milestones for lr reductions')
-    parser.add_argument('--multisteplr_gamma', type=float, default=0.1, help='gamma for lr reductions')
-
-    # REPAIR
-    parser.add_argument("--repair", type=str2bool, default=True, help="use REPAIR after interpolating")
-    parser.add_argument("--repair_soup", type=str2bool, default=False, help="use REPAIR after soups (will be set to True for method_comb=none)")  # bad, but needed for baseline models to merge well in soups
-    parser.add_argument("--n_iter", type=int, default=5, help="the number of itererations in repair")
-
-    # Varying Regularizations
-    parser.add_argument('--mixup', nargs='+', default=['0.0'], help='List of mixup alpha to choose from')
-    parser.add_argument('--smooth', nargs='+', default=['0.0'], help='List of label smoothings to choose from')
-    parser.add_argument("--hyperparams_mix", type=str2bool, default=True, help='If true, can have label smoothing and mixup together, otherwise its one or the')
 
     # Correlation estimation
     parser.add_argument("--correlation_est", type=str2bool, default=False, help='Calculate the cosine similarity between layers of all networks to the avg-soup')
@@ -122,14 +131,14 @@ def main(rank, args, hyperparams, n_hyperparams):
     args, max_select, scaler, hyperparams_per_gpu, residual = preprocessing(rank, args, hyperparams)
 
     # Dataset
-    args, train_dset, test_dset, val_dset = get_data(args)
+    args, train_dset_noaug, train_dset, test_dset, val_dset = get_data(args, hyperparams)
 
     # print args
     mystr_write = print_args(args, hyperparams_per_gpu, n_hyperparams)
 
     # List of networks
     models = net_list(args=args, n_pop=args.n_pop_per_gpu, hyperparams=hyperparams_per_gpu, 
-        train_dset=train_dset, test_dset=test_dset, val_dset=val_dset, num_classes=args.num_classes)
+        train_dset=train_dset, test_dset=test_dset, val_dset=val_dset, num_classes=args.num_classes, train_dset_noaug=train_dset_noaug)
     optimizer, lr_scheduler = models.get_optimizers_schedulers()
 
     perm_fn = None
@@ -146,10 +155,20 @@ def main(rank, args, hyperparams, n_hyperparams):
         dist.barrier() # probably not needed but its nice to wait for everyone :)
 
     for epoch in range(args.EPOCHS):
+
+        if epoch == 0 and args.linear_prob_time > 0 and args.finetune:
+            print('<< Linear Probing starting >>')
+            models.freeze()
+
+        if epoch == args.linear_prob_time and args.finetune:
+            print('<< Fine-Tuning starting >>')
+            models.unfreeze()
+
         models.train()
         ## Train for one epoch
         for i in range(len_data_loader):
-            optimizer.zero_grad()
+            for l in range(len(optimizer)):
+                optimizer[l].zero_grad()
             if args.mixed_precision:
                 with autocast():
                     outputs, labels = models()
@@ -165,16 +184,26 @@ def main(rank, args, hyperparams, n_hyperparams):
             if args.clip_grad > 0:
                 torch.nn.utils.clip_grad_norm_(models.all_parameters(), args.clip_grad, norm_type=2.0)
             if args.grad_scaler:
-                scaler.step(optimizer)
-                scaler.update()
+                for l in range(len(optimizer)):
+                    scaler.step(optimizer[l])
+                    scaler.update()
             else:
-                optimizer.step()
-            lr_scheduler.step()
+                for l in range(len(optimizer)):
+                    optimizer[l].step()
+            for l in range(len(lr_scheduler)):
+                lr_scheduler[l].step()
             if args.test:
                 break #### FOR DEBUGGING
 
+
             # EMA of current nets and the average
             if args.ema_alpha != 1.0 and (i % args.ema_every_k == 0):
+                if args.lr_scaling == 'linear':
+                    my_lr = lr_scheduler[0].get_last_lr()[0]
+                    lr_scale = my_lr / args.lr
+                    if lr_scale != 1:
+                        new_ema = lr_scale*(1-args.ema_alpha)
+                        ema_alpha = torch.tensor([1- new_ema, new_ema], device=args.device)
                 nets = models.get_nets()
                 # make current avg net
                 mix_weights_direct(args.device, unif_weights, net_avg, nets)
@@ -215,7 +244,7 @@ def main(rank, args, hyperparams, n_hyperparams):
                             net_list_0[i] = net_list_0[i].to(args.device)
                         models = net_list(args=args, n_pop=args.n_pop, hyperparams=hyperparams, 
                                 train_dset=train_dset, test_dset=test_dset, val_dset=val_dset, num_classes=args.num_classes,
-                                my_net_list=net_list_0, data_loaders=data_loaders_0, start=start).to(args.device)
+                                my_net_list=net_list_0, data_loaders=data_loaders_0, start=start, train_dset_noaug=train_dset_noaug).to(args.device)
 
                         # Bring back nets and loaders to processes
                         net_list_world = [None for i in range(args.world_size)]
@@ -241,7 +270,7 @@ def main(rank, args, hyperparams, n_hyperparams):
                                     train_dset=train_dset, test_dset=test_dset, models=models,
                                     mix=epoch < args.EPOCHS - 1,
                                     train_or_val_acc_list=train_or_val_acc_list, 
-                                    hyperparams=hyperparams)
+                                    hyperparams=hyperparams, hyperparams_after=hyperparams, train_dset_noaug=train_dset_noaug)
                     else:
                         for k, model_k in enumerate(models.get_nets()):
                             save_model(model_k, args.model_name+'_'+str(k))
@@ -279,7 +308,7 @@ def main(rank, args, hyperparams, n_hyperparams):
                         for j, indexes in enumerate(n_groups):
                             new_models += [permute_m1_to_fit_m0_with_repair(args=args, train_dset=train_dset, test_dset=test_dset, alpha=u[j], 
                                 m0=args.model_name+'_'+str(indexes[0].item()), m1=args.model_name+'_'+str(indexes[1].item()), 
-                                mix=epoch < args.EPOCHS - 1)[random.randint(0, 1)]]
+                                mix=epoch < args.EPOCHS - 1, train_dset_noaug=train_dset_noaug)[random.randint(0, 1)]]
                     
                     # Mutate these babies to make monstrosities
                     if args.mutation_sigma > 0:
@@ -337,7 +366,7 @@ def main(rank, args, hyperparams, n_hyperparams):
                         net_list_[0][i] = net_list_[0][i].to(args.device)
                     models = net_list(args=args, n_pop=args.n_pop_per_gpu, hyperparams=hyperparams_per_gpu,
                             train_dset=train_dset, test_dset=test_dset, val_dset=val_dset, num_classes=args.num_classes, 
-                            my_net_list=net_list_[0], data_loaders=data_loaders_[0], start=start).to(args.device)
+                            my_net_list=net_list_[0], data_loaders=data_loaders_[0], start=start, train_dset_noaug=train_dset_noaug).to(args.device)
                     optimizer, lr_scheduler = models.get_optimizers_schedulers()
                     dist.barrier()
                     # Resume optimizer, scheduler
@@ -414,17 +443,11 @@ if __name__ == "__main__":
 
     # Choose the hyperparameters to be used
     hyperparams = []
-    if args.hyperparams_mix:
-        for m in range(len(args.mixup)):
-            for n in range(len(args.smooth)):
-                hyperparams += [{'mixup': args.mixup[m], 'smooth': args.smooth[n]}]
-    else:
-        hyperparams += [{'mixup': args.mixup[0], 'smooth': args.smooth[0]}]
-        for i in range(1, len(args.mixup)):
-            hyperparams += [{'mixup': args.mixup[i], 'smooth': args.smooth[0]}]
-        for i in range(1, len(args.smooth)):
-            hyperparams += [{'mixup': args.mixup[0], 'smooth': args.smooth[i]}]
-
+    for m in range(len(args.mixup)):
+        for n in range(len(args.smooth)):
+            for o in range(len(args.cutmix)):
+                for p in range(len(args.re)):
+                    hyperparams += [{'mixup': args.mixup[m], 'smooth': args.smooth[n], 'cutmix': args.cutmix[o], 're': args.re[p]}]
 
     n_hyperparams = len(hyperparams)
     random.shuffle(hyperparams)

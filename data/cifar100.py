@@ -2,8 +2,9 @@ import torchvision
 import torchvision.transforms as T
 import numpy as np
 import PIL
+from utils.random_erasing import RandomErasing
 
-def get_cifar100(imagenet_size=False):
+def get_cifar100(imagenet_size=False, re=0.0):
     CIFAR_MEAN = [0.5071, 0.4865, 0.4409]
     CIFAR_STD = [0.2673, 0.2564, 0.2762]
     normalize = T.Normalize(np.array(CIFAR_MEAN), np.array(CIFAR_STD))
@@ -16,6 +17,8 @@ def get_cifar100(imagenet_size=False):
         # can try interpolation=InterpolationMode.BICUBIC, antialias=True also
     train_transform += [T.ToTensor()]
     train_transform += [normalize]
+    if re > 0.0:
+        train_transform.append(RandomErasing(re, mode='const', max_count=1, num_splits=0, device='cpu'))
     train_transform = T.Compose(train_transform)
 
     test_transform = []

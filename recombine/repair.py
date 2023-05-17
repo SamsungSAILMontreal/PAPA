@@ -77,7 +77,7 @@ def make_repaired_net(net, args):
     return net1.to(args.device).eval()
 
 # reset all tracked BN stats against training data
-def reset_bn_stats(device, train_dset, model, batch_size=500, n_iter=99999, seed=None, cuda_seed=None, mixup=0.0, smoothing=0.0, transform=None):
+def reset_bn_stats(device, train_dset, model, batch_size=500, n_iter=99999, seed=None, cuda_seed=None, mixup=0.0, smoothing=0.0, cutmix=0.0, transform=None):
     if seed is not None:
         torch.manual_seed(seed)
         torch.cuda.manual_seed(cuda_seed)
@@ -94,7 +94,7 @@ def reset_bn_stats(device, train_dset, model, batch_size=500, n_iter=99999, seed
                 break
             x, y = x.to(device), y.to(device)
             if transform is not None:
-                x, y = transform(x, y, mixup=mixup, smoothing=smoothing)
+                x, y = transform(x, y, mixup=mixup, smoothing=smoothing, cutmix=cutmix)
             x = x.to(memory_format=torch.channels_last)
             output = model(x)
 
@@ -103,9 +103,11 @@ def correct_neuron_stats(train_dset, model0, model1, model_interp, alpha, batch_
     
     mixup = 0.0
     smoothing = 0.0
+    cutmix = 0.0
     if hyperparam is not None:
         mixup = float(hyperparam['mixup'])
         smoothing = float(hyperparam['smooth'])
+        cutmix = float(hyperparam['cutmix'])
     if same_repair: # option I added, ensure same data each time, which makes much more sense and improve results slightly
         seed = np.random.randint(99999)
         cuda_seed = np.random.randint(99999)
@@ -116,8 +118,8 @@ def correct_neuron_stats(train_dset, model0, model1, model_interp, alpha, batch_
 
     wrap0 = make_tracked_net(model0, args=args)
     wrap1 = make_tracked_net(model1, args=args)
-    reset_bn_stats(args.device, train_dset, wrap0, batch_size=batch_size, n_iter=n_iter, seed=seed, cuda_seed=cuda_seed, mixup=mixup, smoothing=smoothing, transform=transform)
-    reset_bn_stats(args.device, train_dset, wrap1, batch_size=batch_size, n_iter=n_iter, seed=seed, cuda_seed=cuda_seed, mixup=mixup, smoothing=smoothing, transform=transform)
+    reset_bn_stats(args.device, train_dset, wrap0, batch_size=batch_size, n_iter=n_iter, seed=seed, cuda_seed=cuda_seed, mixup=mixup, smoothing=smoothing, cutmix=cutmix, transform=transform)
+    reset_bn_stats(args.device, train_dset, wrap1, batch_size=batch_size, n_iter=n_iter, seed=seed, cuda_seed=cuda_seed, mixup=mixup, smoothing=smoothing, cutmix=cutmix, transform=transform)
     wrap_a = make_repaired_net(model_interp, args=args)
     # Iterate through corresponding triples of (TrackLayer, TrackLayer, ResetLayer)
     # around conv layers in (model0, model1, model_interp).
@@ -138,7 +140,7 @@ def correct_neuron_stats(train_dset, model0, model1, model_interp, alpha, batch_
 
     # Estimate mean/vars such that when added BNs are set to eval mode,
     # neuronal stats will be goal_mean and goal_std.
-    reset_bn_stats(args.device, train_dset, wrap_a, batch_size=batch_size, n_iter=n_iter, seed=seed, cuda_seed=cuda_seed, mixup=mixup, smoothing=smoothing, transform=transform)
+    reset_bn_stats(args.device, train_dset, wrap_a, batch_size=batch_size, n_iter=n_iter, seed=seed, cuda_seed=cuda_seed, mixup=mixup, smoothing=smoothing, cutmix=cutmix, transform=transform)
     # fuse the rescaling+shift coefficients back into conv layers
     model_interp = fuse_tracked_net(wrap_a, args=args)
 
@@ -146,14 +148,23 @@ def correct_neuron_stats(train_dset, model0, model1, model_interp, alpha, batch_
 
 ## Generalization to more than 2 networks combined
 # O(ln^2), l=number of layers, n=number of networks
-def correct_neuron_stats_multiple(train_dset, models, models_interp, alpha, batch_size=500, 
-    n_iter=99999, args=None, same_repair=False, hyperparams=None):
+def correct_neuron_stats_multiple(train_dset_in, train_dset_out, models, models_interp, alpha, batch_size=500, 
+    n_iter=99999, args=None, same_repair=False, hyperparams=None, hyperparams_after=None):
 
     mixup = [0.0 for i in range(len(models))]
     smoothing = [0.0 for i in range(len(models))]
+    cutmix = [0.0 for i in range(len(models))]
+    mixup_after = mixup
+    smoothing_after = smoothing
+    cutmix_after = cutmix
     if hyperparams is not None:
         mixup = [float(hyperparams[i]['mixup']) for i in range(len(models))]
         smoothing = [float(hyperparams[i]['smooth']) for i in range(len(models))]
+        cutmix = [float(hyperparams[i]['cutmix']) for i in range(len(models))]
+    if hyperparams_after is not None:
+        mixup_after = [float(hyperparams_after[i]['mixup']) for i in range(len(models))]
+        smoothing_after = [float(hyperparams_after[i]['smooth']) for i in range(len(models))]
+        cutmix_after = [float(hyperparams_after[i]['cutmix']) for i in range(len(models))]
 
     if same_repair: # option I added, ensure same data each time, which makes much more sense and improve results slightly
         seed = np.random.randint(99999)
@@ -170,7 +181,7 @@ def correct_neuron_stats_multiple(train_dset, models, models_interp, alpha, batc
     wrap = copy.deepcopy(models)
     for j in range(len(models)): 
         wrap[j] = make_tracked_net(models[j], args=args)
-        reset_bn_stats(args.device, train_dset, wrap[j], batch_size=batch_size, n_iter=n_iter, seed=seed, cuda_seed=cuda_seed, mixup=mixup[j], smoothing=smoothing[j], transform=transform)
+        reset_bn_stats(args.device, train_dset_in[0 if len(train_dset_in)==1 else j], wrap[j], batch_size=batch_size, n_iter=n_iter, seed=seed, cuda_seed=cuda_seed, mixup=mixup[j], smoothing=smoothing[j], cutmix=cutmix[j], transform=transform)
 
     for i in range(len(models_interp)): # loop over interpolated (child) models
         goal_mean = dict()
@@ -194,7 +205,7 @@ def correct_neuron_stats_multiple(train_dset, models, models_interp, alpha, batc
 
         # Estimate mean/vars such that when added BNs are set to eval mode,
         # neuronal stats will be goal_mean and goal_std.
-        reset_bn_stats(args.device, train_dset, wrap_interp[i], batch_size=batch_size, n_iter=n_iter, seed=seed, cuda_seed=cuda_seed, mixup=mixup[i], smoothing=smoothing[i], transform=transform)
+        reset_bn_stats(args.device, train_dset_out[0 if len(train_dset_out)==1 else i], wrap_interp[i], batch_size=batch_size, n_iter=n_iter, seed=seed, cuda_seed=cuda_seed, mixup=mixup_after[i], smoothing=smoothing_after[i], cutmix=cutmix_after[i], transform=transform)
 
         # fuse the rescaling+shift coefficients back into conv layers
         wrap_interp[i] = fuse_tracked_net(wrap_interp[i], args=args)
