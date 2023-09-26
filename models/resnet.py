@@ -48,7 +48,7 @@ class BasicBlock(nn.Module):
     def forward(self, x):
         out = self.act(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
-        out += self.shortcut(x)
+        out = out + self.shortcut(x)
         out = self.act(out)
         return out
 
