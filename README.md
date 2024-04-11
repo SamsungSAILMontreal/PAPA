@@ -2,7 +2,7 @@
 
 <a href="https://arxiv.org/abs/2304.03094" target="_blank">Paper</a>, <a href="https://ajolicoeur.wordpress.com/papa" target="_blank">Blog</a> </h3>
 
-This is the official implementation of the paper [PopulAtion Parameter Averaging (PAPA)](https://arxiv.org/abs/2304.03094). In this paper, we devise an algorithm to obtain a strong single model by training a population of models and averaging them once-in-a-while or slowly pushing them toward the average. Through PAPA, one can obtain a better model than by training a single model. See the [blog post](https://ajolicoeur.wordpress.com/papa) for a summary of the approach.
+This is the official implementation of the paper [PopulAtion Parameter Averaging (PAPA)](https://openreview.net/forum?id=cPDVjsOytS) published at TMLR. In this paper, we devise an algorithm to obtain a strong single model by training a population of models and averaging them once-in-a-while or slowly pushing them toward the average. Through PAPA, one can obtain a better model than by training a single model. See the [blog post](https://ajolicoeur.wordpress.com/papa) for a summary of the approach.
 
 ![](https://github.com/AlexiaJM/recombine_nets/blob/clean_for_release/assets/Old_Merging.gif)
 
@@ -118,10 +118,13 @@ If you find the code/idea useful for your research, please consider citing:
 
 
 ```bib
-@article{jolicoeurmartineau2023population,
-  title={PopulAtion Parameter Averaging (PAPA)},
-  author={Alexia Jolicoeur-Martineau and Emy Gervais and Kilian Fatras and Yan Zhang and Simon Lacoste-Julien},
-  journal={arXiv preprint arXiv:2304.03094},
-  year={2023}}
+@article{jolicoeurmartineau2024population,
+title={PopulAtion Parameter Averaging ({PAPA})},
+author={Alexia Jolicoeur-Martineau and Emy Gervais and Kilian FATRAS and Yan Zhang and Simon Lacoste-Julien},
+journal={Transactions on Machine Learning Research},
+issn={2835-8856},
+year={2024},
+url={https://openreview.net/forum?id=cPDVjsOytS},
+note={}
 }
 ```
